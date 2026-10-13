@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bevy 3D Viewer</title>
+  <title>Bevy Depth Peeling</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -21,101 +21,59 @@
       height: 100% !important;
     }
 
-    #drop-overlay {
+    #unsupported {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 120, 255, 0.25);
-      border: 4px dashed #4af;
-      z-index: 100;
-      pointer-events: none;
       align-items: center;
       justify-content: center;
-    }
-    #drop-overlay.active { display: flex; }
-    #drop-overlay p {
+      flex-direction: column;
+      gap: 1rem;
+      padding: 2rem;
+      text-align: center;
       color: #fff;
-      font-size: 2rem;
-      font-weight: bold;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
-      pointer-events: none;
+      background: #1a1a1a;
     }
+    #unsupported.active { display: flex; }
+    #unsupported h1 { font-size: 1.6rem; }
+    #unsupported p { color: #bbb; max-width: 40rem; line-height: 1.5; }
   </style>
 </head>
 <body>
   <canvas id="bevy-canvas"></canvas>
-  <div id="drop-overlay"><p>Déposer un fichier glTF / GLB</p></div>
+
+  <div id="unsupported">
+    <h1>WebGPU indisponible</h1>
+    <p>
+      Cette démo nécessite WebGPU et un contexte sécurisé (https ou
+      http://localhost). Utilisez un navigateur compatible WebGPU
+      (Chrome/Edge récents, ou Firefox avec WebGPU activé) et servez la page
+      via le serveur local fourni.
+    </p>
+    <p>
+      Contrôles : clic gauche + glisser pour orbiter, molette pour zoomer,
+      Q / E pour le roll, P pour activer/désactiver le depth peeling,
+      S pour changer de scène.
+    </p>
+  </div>
 
   <script type="module">
-    import init from './pkg/bevy_viewer.js';
+    import init from './pkg/bevy_depth_peeling.js';
 
-    // Remove any inline size that winit may have set before Bevy starts.
     const canvas = document.getElementById('bevy-canvas');
+
+    // Keep the canvas pixel resolution in sync with its CSS size.
     const observer = new ResizeObserver(() => {
-      // Keep the canvas pixel resolution in sync with its CSS size.
       canvas.width  = canvas.clientWidth  * window.devicePixelRatio;
       canvas.height = canvas.clientHeight * window.devicePixelRatio;
     });
     observer.observe(canvas);
 
-    // init() returns instance.exports directly (wasm-bindgen internals).
-    const exports = await init();
-    const { wasm_load_file, memory } = exports;
-
-    const overlay = document.getElementById('drop-overlay');
-    let dragCounter = 0;
-
-    // Capture phase on document so we intercept before the browser's default
-    // file-open behaviour and before Bevy's canvas handlers.
-    document.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      dragCounter++;
-      overlay.classList.add('active');
-    }, true);
-
-    document.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      if (--dragCounter <= 0) {
-        dragCounter = 0;
-        overlay.classList.remove('active');
-      }
-    }, true);
-
-    document.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'copy';
-    }, true);
-
-    document.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounter = 0;
-      overlay.classList.remove('active');
-
-      const files = e.dataTransfer?.files;
-      if (!files || files.length === 0) return;
-
-      for (const file of files) {
-        const lname = file.name.toLowerCase();
-        if (!lname.endsWith('.gltf') && !lname.endsWith('.glb')) continue;
-
-        const buffer    = await file.arrayBuffer();
-        const bytes     = new Uint8Array(buffer);
-        const nameBytes = new TextEncoder().encode(file.name);
-
-        // Allocate in WASM linear memory and copy both buffers.
-        const malloc  = exports.__wbindgen_malloc ?? exports.malloc;
-        const namePtr = malloc(nameBytes.length, 1);
-        const dataPtr = malloc(bytes.length,     1);
-
-        new Uint8Array(memory.buffer, namePtr, nameBytes.length).set(nameBytes);
-        new Uint8Array(memory.buffer, dataPtr, bytes.length).set(bytes);
-
-        wasm_load_file(namePtr, nameBytes.length, dataPtr, bytes.length);
-        break;
-      }
-    }, true);
+    if (!('gpu' in navigator)) {
+      document.getElementById('unsupported').classList.add('active');
+    } else {
+      init();
+    }
   </script>
 </body>
 </html>
